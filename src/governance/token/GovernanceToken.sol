@@ -2,7 +2,7 @@
 
 import "@openzeppelin/contracts/token/ERC20/extension/ERC20Votes";
 
-contract VimimToken is ERC20Votes {
+contract GovernanceToken is ERC20Votes {
     uint256 public maxSupply = 1000000;
 
     constructor() ERC20("VilimToken", "VLM") ERC20Permit("VilimToken") {
