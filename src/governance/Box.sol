@@ -1,16 +1,19 @@
-//SPDX-License-Identifier: MIT
-pragma solidity ^0.8.18;
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.24;
 
-import "@openzeppelin/contracts/access/Ownable.sol";
-
-contract Box is Ownable {
+contract Box {
     uint256 private value;
+    bool isInitialized;
 
     event ValueChanged(uint256 newValue);
 
-    constructor() Ownable(msg.sender) {}
+    function initialize(uint256 initValue) external {
+        require(!isInitialized, "Already initialized");
+        value = initValue;
+        isInitialized = true;
+    }
 
-    function store(uint256 newValue) public onlyOwner {
+    function store(uint256 newValue) public {
         value = newValue;
         emit ValueChanged(newValue);
     }
