@@ -6,11 +6,15 @@ import "lib/openzeppelin-contracts-upgradeable/contracts/access/OwnableUpgradeab
 
 contract BoxV2 is UUPSUpgradeable, OwnableUpgradeable {
     uint256 private value;
+    bool isInitialized;
 
     function initialize(uint256 _value) external initializer {
+        require(!isInitialized, "Already initialized");
+
         __Ownable_init(msg.sender);
         __UUPSUpgradeable_init();
         value = _value;
+        isInitialized = true;
     }
 
     function getValue() external view returns (uint256) {
