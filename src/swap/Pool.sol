@@ -134,6 +134,7 @@ contract Pool {
         maxReward = _maxRewardRate;
         minRewardRate = _minRewardRate;
         targetLiquidity = _targetLiqudity;
+
     }
 
 
