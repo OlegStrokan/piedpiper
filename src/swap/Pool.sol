@@ -1,4 +1,4 @@
-//SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 pragma solidity 0.8.24;
 
 import "./token/LPToken.sol";
@@ -12,116 +12,208 @@ contract Pool {
     uint256 public targetLiquidity = 1 ether;
 
     struct PoolInfo {
-        LPToken lptoken;
-        uint256 totalLiquidity;
-        mapping(address => uint256) liquidityProvided;
-        mapping(address => uint256 lastClaimedTime;
+        LPToken lpToken;
+        uint256 totalLiquidityTokenA;
+        uint256 totalLiquidityTokenB;
+        mapping(address => uint256) liquidityProvidedTokenA;
+        mapping(address => uint256) liquidityProvidedTokenB;
+        mapping(address => uint256) lastClaimedTime;
     }
 
-    mapping(address => PoolInfo) public pools;
+    mapping(address => mapping(address => PoolInfo)) public pools; // tokenA -> tokenB -> PoolInfo
     address[] public supportedTokens;
 
+    error NotTheOwner();
+    error TokenAlreadyExists(address tokenA, address tokenB);
+    error UnsupportedToken(address tokenA, address tokenB);
+    error InsufficientLiquidity();
+    error InvalidTokenAmount();
 
-    error NotTheOwner()
-    error TokenAlreadyExists(address tokenAddress);
-    error Unsupportedtoken(address tokenAddress);
-    error EthZeroAmount();
-    error LPTokenZeroAmount();
-    error InsufficientEthAmountInPool(uin256 amount);
-    error InsufficientRewardsxRate();
-
-    modifier onlyOnwer() {
-        if(msg.sender != owner) revert NotTheOwner();
+    modifier onlyOwner() {
+        if (msg.sender != owner) revert NotTheOwner();
         _;
     }
 
-    event LiquidityProvided(address indexed user, address indexed token, uint256 ethAmount, uint256 lpTokens);
-    event LiquidityRemoved(address indexed user, address indexed token, uint256 ethAmount, uin256 lpTokens);
-    event RewardsClaimed(address indexed user, address indexed token, uint256 rewardAmount);
+    event LiquidityProvided(
+        address indexed user,
+        address indexed tokenA,
+        address indexed tokenB,
+        uint256 amountA,
+        uint256 amountB,
+        uint256 lpTokens
+    );
+    event LiquidityRemoved(
+        address indexed user,
+        address indexed tokenA,
+        address indexed tokenB,
+        uint256 amountA,
+        uint256 amountB,
+        uint256 lpTokens
+    );
+    event RewardsClaimed(
+        address indexed user,
+        address indexed tokenA,
+        address indexed tokenB,
+        uint256 rewardAmount
+    );
 
     constructor() {
         owner = msg.sender;
     }
 
-    function addToken(address tokenAddress, address lpTokenAddress) external onlyOwner {
-        if (pools[tokenAddress].lpToken != LPToken(address(0))) revert TokenAlreadyExists(tokenAddress);
+    function addTokenPair(
+        address tokenA,
+        address tokenB,
+        address lpTokenAddress
+    ) external onlyOwner {
+        if (pools[tokenA][tokenB].lpToken != LPToken(address(0)))
+            revert TokenAlreadyExists(tokenA, tokenB);
 
         LPToken lpToken = LPToken(lpTokenAddress);
-        PoolInfo storage newPool = pools[tokenAddress];
+        PoolInfo storage newPool = pools[tokenA][tokenB];
         newPool.lpToken = lpToken;
-        newPool.totalLiquidity = 0;
-        
-        supportedTokens.push(tokenAddress);
+        newPool.totalLiquidityTokenA = 0;
+        newPool.totalLiquidityTokenB = 0;
+
+        supportedTokens.push(tokenA);
+        supportedTokens.push(tokenB);
     }
 
-    function provideLiquidity(address tokenAddress) external payable {
-        if (msg.value == 0) revert EthZeroAmount();
-        if (pools[tokenAddress].lpToken == LPToken(address(0))) revert UnsupportedToken(tokenAddress);
-        
-        PoolInfo storage pool - pools[tokenAddress];
+    function provideLiquidity(
+        address tokenA,
+        address tokenB,
+        uint256 amountA,
+        uint256 amountB
+    ) external {
+        if (amountA == 0 || amountB == 0) revert InvalidTokenAmount();
+        if (pools[tokenA][tokenB].lpToken == LPToken(address(0)))
+            revert UnsupportedToken(tokenA, tokenB);
 
-        uint256 lpTokensToMint = (pool.totalLiquidity == 0)
-        ? msg.value
-        : (msg.value * pool.lpToken.totalSupply()) / pool.totalLiquidity;
+        PoolInfo storage pool = pools[tokenA][tokenB];
 
-        pool.totalLiquidity += msg.value;
-        pool.liquidityProvider[msg.sender] += msg.value;
+        IERC20(tokenA).transferFrom(msg.sender, address(this), amountA);
+        IERC20(tokenB).transferFrom(msg.sender, address(this), amountB);
+
+        uint256 lpTokensToMint;
+
+        if (pool.totalLiquidityTokenA == 0 && pool.totalLiquidityTokenB == 0) {
+            lpTokensToMint = amountA; // Initialize with the first deposit
+        } else {
+            uint256 totalSupply = pool.lpToken.totalSupply();
+            lpTokensToMint =
+                (amountA * totalSupply) /
+                pool.totalLiquidityTokenA;
+        }
+
+        pool.totalLiquidityTokenA += amountA;
+        pool.totalLiquidityTokenB += amountB;
+        pool.liquidityProvidedTokenA[msg.sender] += amountA;
+        pool.liquidityProvidedTokenB[msg.sender] += amountB;
         pool.lastClaimedTime[msg.sender] = block.timestamp;
 
         pool.lpToken.mint(msg.sender, lpTokensToMint);
 
-        emit LiquidityProvided(msg.sender, tokenAddress, msg.value, lpTokensToMint);
-    };
-
-    function removeLiquidity(address tokenAddress) external payable {
-        if(lpTokenAmount == 0) revert LPTokenZeroAmount();
-        if(pools[tokenAddress].lpTokens == LPToken(address(0))) revert UnsupportedToken(tokenAddress);
-
-        PoolInfo storage pool = pools[tokenAddress];
-        
-        uint256 ethAmount = (lpTokenAmount * pool.totalLiquidity)
-        if(ethAmount > pool.totalLiquidity) revert InsufficientEthAmountInPool();
-
-        pool.totalLiquidity -= ethAmount;
-        pool.liquidityProvided[msg.sender] -= ethAmount;
-
-        pool.lpToken.burn(msg.sender, lpTokenAmount);
-        payable(msg.sender).transfer(ethAmount);
-
-        emit(LiquidityRemoved(msg.sender, tokenAddress, ethAmount, lpTokenAmount));
+        emit LiquidityProvided(
+            msg.sender,
+            tokenA,
+            tokenB,
+            amountA,
+            amountB,
+            lpTokensToMint
+        );
     }
 
-    function claimRewards(address tokenAddress) external {
-        if(pools[tokenAddress].lpToken == LPToken(address(0))); UnsupportedToken(tokenAddress);
+    function removeLiquidity(
+        address tokenA,
+        address tokenB,
+        uint256 lpTokenAmount
+    ) external {
+        if (lpTokenAmount == 0) revert InvalidTokenAmount();
+        if (pools[tokenA][tokenB].lpToken == LPToken(address(0)))
+            revert UnsupportedToken(tokenA, tokenB);
 
-        PoolInfo storage pool = pools[tokenAddress];
-        uint256 rewards = calculateRewards(tokenAddress, msg.sender);
+        PoolInfo storage pool = pools[tokenA][tokenB];
+
+        uint256 amountA = (lpTokenAmount * pool.totalLiquidityTokenA) /
+            pool.lpToken.totalSupply();
+        uint256 amountB = (lpTokenAmount * pool.totalLiquidityTokenB) /
+            pool.lpToken.totalSupply();
+
+        if (
+            amountA > pool.totalLiquidityTokenA ||
+            amountB > pool.totalLiquidityTokenB
+        ) revert InsufficientLiquidity();
+
+        pool.totalLiquidityTokenA -= amountA;
+        pool.totalLiquidityTokenB -= amountB;
+        pool.liquidityProvidedTokenA[msg.sender] -= amountA;
+        pool.liquidityProvidedTokenB[msg.sender] -= amountB;
+
+        pool.lpToken.burn(msg.sender, lpTokenAmount);
+
+        IERC20(tokenA).transfer(msg.sender, amountA);
+        IERC20(tokenB).transfer(msg.sender, amountB);
+
+        emit LiquidityRemoved(
+            msg.sender,
+            tokenA,
+            tokenB,
+            amountA,
+            amountB,
+            lpTokenAmount
+        );
+    }
+
+    function claimRewards(address tokenA, address tokenB) external {
+        if (pools[tokenA][tokenB].lpToken == LPToken(address(0)))
+            revert UnsupportedToken(tokenA, tokenB);
+
+        PoolInfo storage pool = pools[tokenA][tokenB];
+        uint256 rewards = calculateRewards(tokenA, tokenB, msg.sender);
 
         pool.lastClaimedTime[msg.sender] = block.timestamp;
 
         payable(msg.sender).transfer(rewards);
 
-        emit RewardClaimed(msg.sender, tokenAddress, rewards);
+        emit RewardsClaimed(msg.sender, tokenA, tokenB, rewards);
     }
 
-    function calculateRewards(address tokenAddress, address user) public view returns(uint256) {
-        if (pools[tokenAddress].lpToken == LPToken(address(0))) UnsupportedToken(tokenAddress);
+    function calculateRewards(
+        address tokenA,
+        address tokenB,
+        address user
+    ) public view returns (uint256) {
+        if (pools[tokenA][tokenB].lpToken == LPToken(address(0)))
+            revert UnsupportedToken(tokenA, tokenB);
 
-        PoolInfo storage pool = pools[tokenAddress];
+        PoolInfo storage pool = pools[tokenA][tokenB];
         uint256 timeDifference = block.timestamp - pool.lastClaimedTime[user];
-        uint256 userLiquidity = pool.liquidityProvided[user];
+        uint256 userLiquidityA = pool.liquidityProvidedTokenA[user];
+        uint256 userLiquidityB = pool.liquidityProvidedTokenB[user];
 
-        uint256 dynamicRewardRate = getDynamicRewardRate(pool.totalLiquidity);
-        uint256 rewards = (userLiquidity * dynamicRewardRate * timeDifference) / (365 days * 100);
+        uint256 dynamicRewardRate = getDynamicRewardRate(
+            pool.totalLiquidityTokenA
+        );
+        uint256 rewards = (userLiquidityA *
+            dynamicRewardRate *
+            timeDifference) / (365 days * 100);
 
         return rewards;
-    } 
+    }
 
-    function getDynamicRewardRate(uin256 totalLiquidity) public view returns (uint256) {
-        if (totalLiqudity <= targetLiquidity) {
-            return maxRewardRate - (maxRewardRate - minRewardRate) * totalLiquidity / targetLiquidity;
+    function getDynamicRewardRate(
+        uint256 totalLiquidity
+    ) public view returns (uint256) {
+        if (totalLiquidity <= targetLiquidity) {
+            return
+                maxRewardRate -
+                ((maxRewardRate - minRewardRate) * totalLiquidity) /
+                targetLiquidity;
         } else {
-            return minRewardRate + (maxRewardRate - minRewardRate) * totalLiquidity / totalLiquidity;
+            return
+                minRewardRate +
+                ((maxRewardRate - minRewardRate) * totalLiquidity) /
+                totalLiquidity;
         }
     }
 
@@ -129,17 +221,13 @@ contract Pool {
         return supportedTokens;
     }
 
-    function setRewardParametrs(uint256 _maxRewardRate, uint256 _minRewardRate) external onlyOwner {
-        if (_maxRewardRate < minRewardRate) return InsufficientRewardsRate();
-        maxReward = _maxRewardRate;
+    function setRewardParameters(
+        uint256 _maxRewardRate,
+        uint256 _minRewardRate
+    ) external onlyOwner {
+        if (_maxRewardRate < minRewardRate) revert InsufficientRewardsRate();
+        maxRewardRate = _maxRewardRate;
         minRewardRate = _minRewardRate;
-        targetLiquidity = _targetLiqudity;
-
+        targetLiquidity = _targetLiquidity;
     }
-
-
-
-    
-
-
 }
