@@ -223,9 +223,10 @@ contract Pool {
 
     function setRewardParameters(
         uint256 _maxRewardRate,
-        uint256 _minRewardRate
+        uint256 _minRewardRate,
+        uint256 _targetLiquidity
     ) external onlyOwner {
-        if (_maxRewardRate < minRewardRate) revert InsufficientRewardsRate();
+        if (_maxRewardRate < _minRewardRate) revert InsufficientRewardsRate();
         maxRewardRate = _maxRewardRate;
         minRewardRate = _minRewardRate;
         targetLiquidity = _targetLiquidity;
