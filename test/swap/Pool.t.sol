@@ -2,6 +2,8 @@
 pragma solidity 0.8.24;
 import "forge-std/Test.sol";
 import "../../src/swap/Pool.sol";
+import "../../src/tokens/StorinToken.sol";
+import "../../src/tokens/Usdt.sol";
 import "../../src/swap/token/LPToken.sol";
 
 contract PoolTest is Test {
@@ -27,8 +29,8 @@ contract PoolTest is Test {
 
     function testAddToken() public {
         vm.prank(owner);
-        pool.addToken(address(myToken), address(lpTokens));
-    }
+        pool.add(address(storinToken), address(usdt), address(lpTokens));
 
-    function createPool() private {}
+        assertEq(pool.pools.length, 1);
+    }
 }
